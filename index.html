@@ -113,7 +113,7 @@
     <button id="btnFetch" class="primary">联网更新汇率</button>
   </div>
 
-  <details class="card">
+  <details class="card" id="rateCard">
     <summary>汇率设置（点开手动编辑）</summary>
     <div id="rateRows" style="margin-top:10px"></div>
     <div class="hint">以美元为基准。联网会拉到最新汇率并存本地，离线用缓存。也可手动改。</div>
@@ -157,6 +157,10 @@
     <div id="changeCurRows" style="margin-top:10px"></div>
     <div class="row" style="margin-top:6px"><button id="btnAddChange">＋ 添加找零币种</button></div>
     <div id="optResult"></div>
+  </div>
+
+  <div class="card">
+    <button id="btnResetUI" class="ghost" style="display:block;width:100%;padding:9px">重置界面（币种 / 开关 / 输入）</button>
   </div>
 
 </div>
@@ -313,6 +317,44 @@
     recalc();
   }
 
+  // ── 界面状态记忆：币种 / 开关 / 输入，存本地，下次打开原样恢复 ──
+  var UI_KEY = "ui_v1";
+  var uiSaveTimer = null;
+  function loadUI() {
+    try {
+      var s = localStorage.getItem(UI_KEY);
+      if (!s) return null;
+      var o = JSON.parse(s);
+      if (!o || typeof o !== "object" || o.v !== 1) return null;
+      return o;
+    } catch (e) { return null; }
+  }
+  function saveUI() {
+    if (uiSaveTimer) clearTimeout(uiSaveTimer);
+    uiSaveTimer = setTimeout(function () {
+      try {
+        var paid = [];
+        document.querySelectorAll("#paidRows .row").forEach(function (row) {
+          paid.push({
+            currency: row.querySelector(".paidCur").value,
+            amount: row.querySelector(".paidAmt").value
+          });
+        });
+        var rc = document.getElementById("rateCard");
+        var ui = {
+          v: 1,
+          priceCur: document.getElementById("priceCur").value,
+          priceAmt: document.getElementById("priceAmt").value,
+          paid: paid,
+          change: changeCurList.map(function (r) { return { currency: r.currency, amount: r.amount }; }),
+          optOn: document.getElementById("optSwitch").checked,
+          rateOpen: rc ? rc.open : false
+        };
+        localStorage.setItem(UI_KEY, JSON.stringify(ui));
+      } catch (e) {}
+    }, 300);
+  }
+
   function getPrice() {
     var amt = parseFloat(document.getElementById("priceAmt").value);
     var cur = document.getElementById("priceCur").value;
@@ -415,6 +457,7 @@
         optRes.appendChild(box);
       }
     }
+    saveUI();
   }
 
   // 汇率联网更新
@@ -484,17 +527,53 @@
   });
 
   // 初始化
+  var savedUI = loadUI();
   fillSelect(document.getElementById("priceCur"));
-  document.getElementById("priceCur").value = BASE;
+  document.getElementById("priceCur").value = (savedUI && CURS.indexOf(savedUI.priceCur) >= 0) ? savedUI.priceCur : BASE;
+  if (savedUI && typeof savedUI.priceAmt === "string" && savedUI.priceAmt !== "") {
+    document.getElementById("priceAmt").value = savedUI.priceAmt;
+  }
   document.getElementById("priceAmt").addEventListener("input", recalc);
   document.getElementById("priceCur").addEventListener("change", recalc);
   document.getElementById("btnAddPaid").addEventListener("click", function () { addPaidRow(); });
   document.getElementById("btnAddChange").addEventListener("click", function () { addChangeRow(); });
   document.getElementById("optSwitch").addEventListener("change", recalc);
+  document.getElementById("optSwitch").checked = !!(savedUI && savedUI.optOn);
+
+  var rateCardEl = document.getElementById("rateCard");
+  if (savedUI && savedUI.rateOpen) rateCardEl.open = true;
+  rateCardEl.addEventListener("toggle", saveUI);
+
+  document.getElementById("btnResetUI").addEventListener("click", function () {
+    if (!confirm("清掉记住的币种、输入和开关，恢复到初始状态？（汇率不受影响）")) return;
+    try { localStorage.removeItem(UI_KEY); } catch (e) {}
+    location.reload();
+  });
 
   renderRates();
-  addChangeRow(BASE);      // 默认一个找零币种（美元，自动）
-  addPaidRow(BASE, null);  // 默认一行实收（美元）
+
+  // 恢复上次的找零币种行
+  if (savedUI && Array.isArray(savedUI.change) && savedUI.change.length) {
+    changeCurList = savedUI.change.map(function (r) {
+      var c = CURS.indexOf(r.currency) >= 0 ? r.currency : BASE;
+      var a = r.amount;
+      return { currency: c, amount: (typeof a === "number" && isFinite(a)) ? a : null };
+    });
+    renderChangeRows();
+  } else {
+    addChangeRow(BASE);      // 默认一个找零币种（美元，自动）
+  }
+
+  // 恢复上次的实收行
+  if (savedUI && Array.isArray(savedUI.paid) && savedUI.paid.length) {
+    savedUI.paid.forEach(function (p) {
+      var c = CURS.indexOf(p.currency) >= 0 ? p.currency : BASE;
+      addPaidRow(c, p.amount === undefined || p.amount === null ? null : String(p.amount));
+    });
+  } else {
+    addPaidRow(BASE, null);  // 默认一行实收（美元）
+  }
+
   recalc();
 })();
 </script>
