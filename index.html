@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>汇率找零</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f6fed">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --line: #e6e8eb;
+    --text: #1a1a1a;
+    --muted: #8a8f98;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1ff;
+    --danger: #e5484d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 15px; line-height: 1.5;
+    padding-bottom: 32px;
+  }
+  header {
+    position: sticky; top: 0; background: var(--bg);
+    padding: 14px 16px 10px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  header h1 { margin: 0; font-size: 19px; }
+  header .updated { color: var(--muted); font-size: 12px; }
+  .wrap { padding: 12px 16px; }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 14px 14px;
+    margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .card h2 { margin: 0 0 10px; font-size: 15px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .row:last-child { margin-bottom: 0; }
+  label.field { flex: 0 0 auto; color: var(--muted); font-size: 13px; min-width: 56px; }
+  input[type=number], input[type=text] {
+    flex: 1; min-width: 0; padding: 9px 10px; font-size: 15px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  }
+  select {
+    flex: 0 0 auto; padding: 9px 6px; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  }
+  button {
+    border: none; border-radius: 8px; padding: 9px 14px; font-size: 14px;
+    background: var(--accent-soft); color: var(--accent); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #fff; width: 100%; padding: 11px; }
+  button.danger { background: #fdecec; color: var(--danger); }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); padding: 5px 9px; }
+  .big {
+    font-size: 26px; font-weight: 700; text-align: center; padding: 6px 0 2px;
+  }
+  .big.neg { color: var(--danger); }
+  .sub { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .switchline { display: flex; align-items: center; justify-content: space-between; }
+  .switch {
+    position: relative; width: 46px; height: 26px; flex: 0 0 auto;
+  }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; background: #cdd2d9; border-radius: 26px; transition: .2s;
+  }
+  .slider::before {
+    content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: .2s;
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .cc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cc-row .cur { flex: 0 0 auto; min-width: 58px; font-weight: 600; }
+  .cc-row input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 auto; }
+  .cc-row input[type=number] { width: 0; }
+  .denom-list { font-size: 12px; color: var(--muted); margin-top: 4px; white-space: normal; }
+  .rate-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .rate-row .eq { color: var(--muted); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .result-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .result-item:last-child { border-bottom: none; }
+  .chip { display:inline-block; background: var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 1px 7px; font-size: 12px; margin-right: 4px; }
+  .card summary { list-style: none; cursor: pointer; font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; justify-content: space-between; }
+  .card summary::-webkit-details-marker { display: none; }
+  .card summary::after { content: "▾"; color: var(--muted); font-size: 13px; }
+  .card[open] summary::after { content: "▴"; }
+  .calc { margin-top: 10px; }
+  .calc-disp { background: #f7f8fa; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 20px; text-align: right; margin-bottom: 8px; min-height: 26px; overflow: hidden; color: var(--text); }
+  .calc-disp.empty { color: var(--muted); }
+  .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .calc-grid button { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 0; font-size: 16px; color: var(--text); }
+  .calc-grid button:active { background: #eef1f6; }
+  .calc-grid button.op { background: var(--accent-soft); color: var(--accent); }
+  .calc-grid button.eq { background: var(--accent); color: #fff; grid-column: span 2; }
+  .calc-grid button.fill { grid-column: span 4; background: #eef3ff; color: var(--accent); font-weight: 600; }
+
+</style>
+</head>
+<body>
+<header>
+  <h1>汇率找零</h1>
+  <span class="updated" id="rateUpdated"></span>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <button id="btnFetch" class="primary">联网更新汇率</button>
+  </div>
+
+  <details class="card">
+    <summary>汇率设置（点开手动编辑）</summary>
+    <div id="rateRows" style="margin-top:10px"></div>
+    <div class="hint">以美元为基准。联网会拉到最新汇率并存本地，离线用缓存。也可手动改。</div>
+  </details>
+
+  <div class="card">
+    <h2>实际应收（价格）</h2>
+    <div class="row">
+      <label class="field">金额</label>
+      <input id="priceAmt" type="number" inputmode="decimal" step="any" placeholder="0">
+      <select id="priceCur"></select>
+    </div>
+    <div class="calc">
+      <div class="calc-disp empty" id="calcDisp">0</div>
+      <div class="calc-grid">
+        <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="⌫">⌫</button>
+        <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="÷" class="op">÷</button>
+        <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="×" class="op">×</button>
+        <button data-k="0">0</button><button data-k=".">.</button><button data-k="C">C</button><button data-k="−" class="op">−</button>
+        <button data-k="=" class="eq">=</button><button data-k="+" class="op">+</button>
+        <button data-k="fill" class="fill">填入应付金额</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>付了多少（可多币种）</h2>
+    <div id="paidRows"></div>
+    <div class="row"><button id="btnAddPaid">＋ 添加币种</button></div>
+    <div class="hint" id="paidTotal"></div>
+  </div>
+
+  <div class="card">
+    <h2>找零</h2>
+    <div class="big" id="changeBig">—</div>
+    <div class="sub" id="changeSub"></div>
+    <div class="switchline">
+      <span>最优找零（跨币种消硬币）</span>
+      <label class="switch"><input type="checkbox" id="optSwitch"><span class="slider"></span></label>
+    </div>
+    <div id="changeCurRows" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:6px"><button id="btnAddChange">＋ 添加找零币种</button></div>
+    <div id="optResult"></div>
+  </div>
+
+</div>
+
+<script src="change-core.js"></script>
+<script>
+(function () {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  }
+  var C = window.ChangeCore;
+  var META = C.CURRENCY_META;
+  var DEN = C.DENOMINATIONS;
+  var BASE = "USD";           // 基准币
+  var CURS = ["USD", "EUR", "GBP", "JPY", "CNY", "HKD", "SGD", "AUD", "CAD", "CHF", "KRW", "THB", "MYR", "INR", "KHR", "VND"];
+
+  // 默认汇率（1 单位币 = 若干 USD），首次联网更新后会被真实汇率覆盖
+  var DEFAULT_RATES = {
+    USD: 1, EUR: 1.09, GBP: 1.27, JPY: 1 / 149, CNY: 1 / 7.2, HKD: 1 / 7.8,
+    SGD: 0.74, AUD: 0.66, CAD: 0.73, CHF: 1.13, KRW: 1 / 1390, THB: 1 / 35.7,
+    MYR: 1 / 4.5, INR: 1 / 86, KHR: 1 / 4040, VND: 1 / 25600
+  };
+  var rates = loadRates();
+
+  function loadRates() {
+    try {
+      var s = localStorage.getItem("fx_rates_v1");
+      if (s) {
+        var o = JSON.parse(s);
+        if (o && o.rates && o.rates.USD) return o.rates;
+      }
+    } catch (e) {}
+    return Object.assign({}, DEFAULT_RATES);
+  }
+  function saveRates() {
+    try {
+      localStorage.setItem("fx_rates_v1", JSON.stringify({ rates: rates, t: Date.now() }));
+    } catch (e) {}
+  }
+  function rateUpdatedText() {
+    try {
+      var s = localStorage.getItem("fx_rates_v1");
+      if (s) {
+        var t = JSON.parse(s).t;
+        if (t) return "更新于 " + new Date(t).toLocaleString();
+      }
+    } catch (e) {}
+    return "默认汇率";
+  }
+
+  function fmt(n, cur) {
+    return n.toLocaleString("zh-CN", {
+      minimumFractionDigits: META[cur].frac,
+      maximumFractionDigits: META[cur].frac,
+    });
+  }
+
+  // 渲染汇率行
+  function renderRates() {
+    var box = document.getElementById("rateRows");
+    box.innerHTML = "";
+    CURS.filter(function (c) { return c !== BASE; }).forEach(function (c) {
+      var row = document.createElement("div");
+      row.className = "rate-row";
+      // 显示 1 BASE = X c  => X = 1/rates[c]
+      var x = C.roundTo(1 / rates[c], 6);
+      row.innerHTML =
+        '<span>1 ' + BASE + '</span><span class="eq">=</span>' +
+        '<input type="number" step="any" inputmode="decimal" data-cur="' + c + '" value="' + x + '">' +
+        '<span>' + c + '</span>';
+      box.appendChild(row);
+    });
+    box.querySelectorAll("input").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var c = inp.dataset.cur;
+        var x = parseFloat(inp.value);
+        if (!isFinite(x) || x <= 0) return;
+        rates[c] = 1 / x;
+        saveRates();
+        recalc();
+      });
+    });
+    document.getElementById("rateUpdated").textContent = rateUpdatedText();
+  }
+
+  // 币种下拉
+  function fillSelect(sel) {
+    CURS.forEach(function (c) {
+      var o = document.createElement("option");
+      o.value = c;
+      o.textContent = c + " " + META[c].name;
+      sel.appendChild(o);
+    });
+  }
+
+  // 实收行
+  function addPaidRow(cur, amt) {
+    var box = document.getElementById("paidRows");
+    var row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<input type="number" step="any" inputmode="decimal" class="paidAmt" placeholder="0">' +
+      '<select class="paidCur"></select>' +
+      '<button class="danger">✕</button>';
+    var amtInp = row.querySelector(".paidAmt");
+    var curSel = row.querySelector(".paidCur");
+    fillSelect(curSel);
+    if (cur) curSel.value = cur;
+    if (amt !== undefined) amtInp.value = amt;
+    amtInp.addEventListener("input", recalc);
+    curSel.addEventListener("change", recalc);
+    row.querySelector("button.danger").addEventListener("click", function () {
+      row.remove();
+      recalc();
+    });
+    box.appendChild(row);
+    recalc();
+  }
+
+  // 找零币种行：可添加多个，每个 = 币种 + 可选手动金额（留空=自动）
+  var changeCurList = []; // [{currency, amount|null}]
+  function renderChangeRows() {
+    var box = document.getElementById("changeCurRows");
+    box.innerHTML = "";
+    changeCurList.forEach(function (r, idx) {
+      var row = document.createElement("div");
+      row.className = "row";
+      row.innerHTML = '<select class="csel"></select>' +
+        '<input type="number" step="any" inputmode="decimal" class="locked" placeholder="自动">' +
+        '<button class="danger">✕</button>';
+      var sel = row.querySelector(".csel");
+      fillSelect(sel);
+      sel.value = r.currency;
+      var inp = row.querySelector("input.locked");
+      if (r.amount !== null) inp.value = r.amount;
+      sel.addEventListener("change", function () { r.currency = sel.value; recalc(); });
+      inp.addEventListener("input", function () {
+        var v = inp.value;
+        r.amount = (v === "" || !isFinite(parseFloat(v))) ? null : parseFloat(v);
+        recalc();
+      });
+      row.querySelector("button.danger").addEventListener("click", function () {
+        changeCurList.splice(idx, 1);
+        renderChangeRows();
+        recalc();
+      });
+      box.appendChild(row);
+    });
+  }
+  function addChangeRow(cur) {
+    var used = changeCurList.map(function (r) { return r.currency; });
+    var c = cur || CURS.find(function (x) { return used.indexOf(x) === -1; }) || BASE;
+    changeCurList.push({ currency: c, amount: null });
+    renderChangeRows();
+    recalc();
+  }
+
+  function getPrice() {
+    var amt = parseFloat(document.getElementById("priceAmt").value);
+    var cur = document.getElementById("priceCur").value;
+    if (!isFinite(amt)) amt = 0;
+    return { amount: amt, currency: cur };
+  }
+  function getPaid() {
+    var list = [];
+    document.querySelectorAll("#paidRows .row").forEach(function (row) {
+      var a = parseFloat(row.querySelector(".paidAmt").value);
+      var c = row.querySelector(".paidCur").value;
+      if (isFinite(a) && a > 0) list.push({ amount: a, currency: c });
+    });
+    return list;
+  }
+
+  function recalc() {
+    var price = getPrice();
+    var paid = getPaid();
+    var res = C.computeChange(price.amount, price.currency, paid, rates);
+
+    // 实收合计提示
+    var tot = document.getElementById("paidTotal");
+    if (paid.length) {
+      tot.textContent = "实收合计 ≈ " + fmt(C.fromBase(res.paidBase, price.currency, rates), price.currency) +
+        " " + price.currency + "（折合基准 " + fmt(res.paidBase, BASE) + " " + BASE + "）";
+    } else {
+      tot.textContent = "";
+    }
+
+    var big = document.getElementById("changeBig");
+    var sub = document.getElementById("changeSub");
+
+    // 锁定的找零（手动填了金额的币种）
+    var locked = [];
+    changeCurList.forEach(function (r) {
+      if (r.amount !== null) locked.push({ currency: r.currency, amount: r.amount });
+    });
+    var lockedBase = 0;
+    locked.forEach(function (l) { lockedBase += C.toBase(l.amount, l.currency, rates); });
+
+    var enabled = changeCurList.map(function (r) { return r.currency; });
+    var enabledUnlocked = changeCurList.filter(function (r) { return r.amount === null; }).map(function (r) { return r.currency; });
+    var optOn = document.getElementById("optSwitch").checked;
+
+    var optRes = document.getElementById("optResult");
+    optRes.innerHTML = "";
+
+    if (res.changeBase <= 0) {
+      big.className = "big neg";
+      big.textContent = "还差 " + fmt(res.shortfallBase, BASE) + " " + BASE;
+      sub.textContent = "";
+    } else {
+      var perCur = {};
+      locked.forEach(function (l) { perCur[l.currency] = (perCur[l.currency] || 0) + l.amount; });
+      var remainingBase = res.changeBase - lockedBase;
+
+      if (optOn && remainingBase > 0.0001) {
+        var optPool = enabledUnlocked.length ? enabledUnlocked : enabled;
+        var opt = C.optimalChange(remainingBase, optPool, rates, DEN);
+        opt.pieces.forEach(function (p) {
+          perCur[p.currency] = (perCur[p.currency] || 0) + p.denom * p.count;
+        });
+        if (opt.leftoverBase > 0.0001) {
+          perCur[BASE] = (perCur[BASE] || 0) + C.fromBase(opt.leftoverBase, BASE, rates);
+        }
+      } else if (remainingBase > 0.0001) {
+        var target = enabledUnlocked.length ? enabledUnlocked[0] : BASE;
+        perCur[target] = (perCur[target] || 0) + C.fromBase(remainingBase, target, rates);
+      }
+
+      var parts = [];
+      CURS.forEach(function (c) {
+        var amt = perCur[c];
+        if (amt && Math.abs(amt) > 0.0001) {
+          parts.push(fmt(C.roundTo(amt, META[c].frac), c) + " " + c);
+        }
+      });
+      big.className = "big";
+      big.textContent = parts.length ? parts.join(" + ") : "0";
+      sub.textContent = "折合基准 " + fmt(res.changeBase, BASE) + " " + BASE;
+
+      // 最优找零时，下面再列张数明细
+      if (optOn && remainingBase > 0.0001) {
+        var opt2 = C.optimalChange(remainingBase, enabledUnlocked.length ? enabledUnlocked : enabled, rates, DEN);
+        var box = document.createElement("div");
+        opt2.pieces.forEach(function (p) {
+          var d = document.createElement("div");
+          d.className = "result-item";
+          d.innerHTML = '<span>' + p.currency + ' ' + p.denom + ' ×' + p.count + '</span>' +
+            '<span>= ' + fmt(p.denom * p.count, p.currency) + ' ' + p.currency + '</span>';
+          box.appendChild(d);
+        });
+        if (opt2.leftoverBase > 0.001) {
+          var r = document.createElement("div");
+          r.className = "hint";
+          r.textContent = "零头（面额凑不整）≈ " + fmt(opt2.leftoverBase, BASE) + " " + BASE;
+          box.appendChild(r);
+        }
+        optRes.appendChild(box);
+      }
+    }
+  }
+
+  // 汇率联网更新
+  document.getElementById("btnFetch").addEventListener("click", function () {
+    var btn = this;
+    btn.textContent = "更新中…";
+    btn.disabled = true;
+    var url = "https://open.er-api.com/v6/latest/" + BASE;
+    fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) {
+        if (j && j.result === "success" && j.rates) {
+          CURS.forEach(function (c) {
+            if (j.rates[c]) rates[c] = 1 / j.rates[c]; // 存成 1 币 = X 基准
+          });
+          rates[BASE] = 1;
+          saveRates();
+          renderRates();
+          recalc();
+          btn.textContent = "已更新";
+        } else {
+          throw new Error("bad payload");
+        }
+      })
+      .catch(function (e) {
+        btn.textContent = "更新失败，用缓存";
+      })
+      .finally(function () { setTimeout(function () { btn.disabled = false; btn.textContent = "联网更新汇率"; }, 1500); });
+  });
+
+  // 计算器
+  var calcExpr = "";
+  var calcDisp = document.getElementById("calcDisp");
+  function roundNice(v) { return String(Math.round(v * 1e6) / 1e6); }
+  function renderCalc() {
+    if (calcExpr === "") { calcDisp.textContent = "0"; calcDisp.classList.add("empty"); }
+    else { calcDisp.textContent = calcExpr; calcDisp.classList.remove("empty"); }
+  }
+  function calcResult() {
+    var s = calcExpr.replace(/÷/g, "/").replace(/×/g, "*").replace(/−/g, "-");
+    s = s.replace(/[^0-9+\-*/().]/g, "");
+    if (s === "") return null;
+    try {
+      var v = new Function("return (" + s + ")")();
+      return isFinite(v) ? v : null;
+    } catch (e) { return null; }
+  }
+  document.querySelectorAll(".calc-grid button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var k = b.dataset.k;
+      if (k === "C") { calcExpr = ""; }
+      else if (k === "⌫") { calcExpr = calcExpr.slice(0, -1); }
+      else if (k === "=") {
+        var v = calcResult();
+        if (v !== null) calcExpr = roundNice(v);
+      }
+      else if (k === "fill") {
+        var r = calcResult();
+        if (r !== null) {
+          document.getElementById("priceAmt").value = roundNice(r);
+          recalc();
+        }
+      }
+      else { calcExpr += k; }
+      renderCalc();
+    });
+  });
+
+  // 初始化
+  fillSelect(document.getElementById("priceCur"));
+  document.getElementById("priceCur").value = BASE;
+  document.getElementById("priceAmt").addEventListener("input", recalc);
+  document.getElementById("priceCur").addEventListener("change", recalc);
+  document.getElementById("btnAddPaid").addEventListener("click", function () { addPaidRow(); });
+  document.getElementById("btnAddChange").addEventListener("click", function () { addChangeRow(); });
+  document.getElementById("optSwitch").addEventListener("change", recalc);
+
+  renderRates();
+  addChangeRow(BASE);      // 默认一个找零币种（美元，自动）
+  addPaidRow(BASE, null);  // 默认一行实收（美元）
+  recalc();
+})();
+</script>
+</body>
+</html>
