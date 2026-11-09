@@ -2,7 +2,7 @@
 // 页面（HTML）走「网络优先带超时回退」，改版后能拿到新版；网络慢或断网时立刻用缓存。
 // 改动网页后，把下面的 CACHE 版本号加一（fx-v2 → fx-v3），手机才会换新缓存。
 
-const CACHE = "fx-v2";
+const CACHE = "fx-v3";
 const ASSETS = [
   "./",
   "./index.html",

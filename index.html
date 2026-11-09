@@ -99,6 +99,7 @@
   .calc-grid button.op { background: var(--accent-soft); color: var(--accent); }
   .calc-grid button.eq { background: var(--accent); color: #fff; grid-column: span 2; }
   .calc-grid button.fill { grid-column: span 4; background: #eef3ff; color: var(--accent); font-weight: 600; }
+  .ver { text-align: center; color: var(--muted); font-size: 11px; padding: 6px 0 0; letter-spacing: .3px; }
 
 </style>
 </head>
@@ -121,11 +122,9 @@
 
   <div class="card">
     <h2>实际应收（价格）</h2>
-    <div class="row">
-      <label class="field">金额</label>
-      <input id="priceAmt" type="number" inputmode="decimal" step="any" placeholder="0">
-      <select id="priceCur"></select>
-    </div>
+    <div id="priceRows"></div>
+    <div class="row"><button id="btnAddPrice">＋ 添加币种</button></div>
+    <div class="hint" id="priceTotal"></div>
     <div class="calc">
       <div class="calc-disp empty" id="calcDisp">0</div>
       <div class="calc-grid">
@@ -161,6 +160,7 @@
 
   <div class="card">
     <button id="btnResetUI" class="ghost" style="display:block;width:100%;padding:9px">重置界面（币种 / 开关 / 输入）</button>
+    <div class="ver" id="appVer"></div>
   </div>
 
 </div>
@@ -175,6 +175,8 @@
   var META = C.CURRENCY_META;
   var DEN = C.DENOMINATIONS;
   var BASE = "USD";           // 基准币
+  var APP_VER = "1.2";        // 应用版本号（改功能时手动加）
+  var APP_DATE = "2026-11-09"; // 版本日期
   var CURS = ["USD", "EUR", "GBP", "JPY", "CNY", "HKD", "SGD", "AUD", "CAD", "CHF", "KRW", "THB", "MYR", "INR", "KHR", "VND"];
 
   // 默认汇率（1 单位币 = 若干 USD），首次联网更新后会被真实汇率覆盖
@@ -318,14 +320,62 @@
   }
 
   // ── 界面状态记忆：币种 / 开关 / 输入，存本地，下次打开原样恢复 ──
-  var UI_KEY = "ui_v1";
-  var uiSaveTimer = null;
+  // 应付金额行（可多币种相加）
+  var lastPriceInput = null;   // 计算器"填入"用：记住最后聚焦的金额框
+  function addPriceRow(cur, amt) {
+    var box = document.getElementById("priceRows");
+    var row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<input type="number" step="any" inputmode="decimal" class="priceAmt" placeholder="0">' +
+      '<select class="priceCur"></select>' +
+      '<button class="danger">✕</button>';
+    var amtInp = row.querySelector(".priceAmt");
+    var curSel = row.querySelector(".priceCur");
+    fillSelect(curSel);
+    if (cur) curSel.value = cur;
+    if (amt !== undefined && amt !== null) amtInp.value = amt;
+    amtInp.addEventListener("input", recalc);
+    amtInp.addEventListener("focus", function () { lastPriceInput = amtInp; });
+    curSel.addEventListener("change", recalc);
+    row.querySelector("button.danger").addEventListener("click", function () {
+      row.remove();
+      if (lastPriceInput === amtInp) lastPriceInput = null;
+      recalc();
+    });
+    box.appendChild(row);
+    if (!lastPriceInput) lastPriceInput = amtInp;
+    recalc();
+  }
+
+  // 应付金额列表
+  function getPriceList() {
+    var list = [];
+    document.querySelectorAll("#priceRows .row").forEach(function (row) {
+      var a = parseFloat(row.querySelector(".priceAmt").value);
+      var c = row.querySelector(".priceCur").value;
+      if (isFinite(a) && a > 0) list.push({ amount: a, currency: c });
+    });
+    return list;
+  }
+
   function loadUI() {
     try {
       var s = localStorage.getItem(UI_KEY);
       if (!s) return null;
       var o = JSON.parse(s);
-      if (!o || typeof o !== "object" || o.v !== 1) return null;
+      if (!o || typeof o !== "object") return null;
+      // 旧数据（v1，价格只有一行）迁移成 v2 的多币种结构
+      if (o.v === 1) {
+        o = {
+          v: 2,
+          price: [{ currency: o.priceCur || BASE, amount: o.priceAmt || "" }],
+          paid: o.paid,
+          change: o.change,
+          optOn: o.optOn,
+          rateOpen: o.rateOpen
+        };
+      }
+      if (o.v !== 2) return null;
       return o;
     } catch (e) { return null; }
   }
@@ -333,6 +383,13 @@
     if (uiSaveTimer) clearTimeout(uiSaveTimer);
     uiSaveTimer = setTimeout(function () {
       try {
+        var price = [];
+        document.querySelectorAll("#priceRows .row").forEach(function (row) {
+          price.push({
+            currency: row.querySelector(".priceCur").value,
+            amount: row.querySelector(".priceAmt").value
+          });
+        });
         var paid = [];
         document.querySelectorAll("#paidRows .row").forEach(function (row) {
           paid.push({
@@ -342,9 +399,8 @@
         });
         var rc = document.getElementById("rateCard");
         var ui = {
-          v: 1,
-          priceCur: document.getElementById("priceCur").value,
-          priceAmt: document.getElementById("priceAmt").value,
+          v: 2,
+          price: price,
           paid: paid,
           change: changeCurList.map(function (r) { return { currency: r.currency, amount: r.amount }; }),
           optOn: document.getElementById("optSwitch").checked,
@@ -355,12 +411,6 @@
     }, 300);
   }
 
-  function getPrice() {
-    var amt = parseFloat(document.getElementById("priceAmt").value);
-    var cur = document.getElementById("priceCur").value;
-    if (!isFinite(amt)) amt = 0;
-    return { amount: amt, currency: cur };
-  }
   function getPaid() {
     var list = [];
     document.querySelectorAll("#paidRows .row").forEach(function (row) {
@@ -372,15 +422,22 @@
   }
 
   function recalc() {
-    var price = getPrice();
+    var prices = getPriceList();
     var paid = getPaid();
-    var res = C.computeChange(price.amount, price.currency, paid, rates);
+    var res = C.computeChange(prices, null, paid, rates);
+
+    // 应付合计提示
+    var ptot = document.getElementById("priceTotal");
+    if (prices.length) {
+      ptot.textContent = "应付合计 ≈ 折合 " + fmt(res.priceBase, BASE) + " " + BASE;
+    } else {
+      ptot.textContent = "";
+    }
 
     // 实收合计提示
     var tot = document.getElementById("paidTotal");
     if (paid.length) {
-      tot.textContent = "实收合计 ≈ " + fmt(C.fromBase(res.paidBase, price.currency, rates), price.currency) +
-        " " + price.currency + "（折合基准 " + fmt(res.paidBase, BASE) + " " + BASE + "）";
+      tot.textContent = "实收合计 ≈ 折合 " + fmt(res.paidBase, BASE) + " " + BASE;
     } else {
       tot.textContent = "";
     }
@@ -517,7 +574,11 @@
       else if (k === "fill") {
         var r = calcResult();
         if (r !== null) {
-          document.getElementById("priceAmt").value = roundNice(r);
+          var target = lastPriceInput || document.querySelector("#priceRows .priceAmt");
+          if (target) {
+            target.value = roundNice(r);
+            lastPriceInput = target;
+          }
           recalc();
         }
       }
@@ -528,13 +589,7 @@
 
   // 初始化
   var savedUI = loadUI();
-  fillSelect(document.getElementById("priceCur"));
-  document.getElementById("priceCur").value = (savedUI && CURS.indexOf(savedUI.priceCur) >= 0) ? savedUI.priceCur : BASE;
-  if (savedUI && typeof savedUI.priceAmt === "string" && savedUI.priceAmt !== "") {
-    document.getElementById("priceAmt").value = savedUI.priceAmt;
-  }
-  document.getElementById("priceAmt").addEventListener("input", recalc);
-  document.getElementById("priceCur").addEventListener("change", recalc);
+  document.getElementById("btnAddPrice").addEventListener("click", function () { addPriceRow(); });
   document.getElementById("btnAddPaid").addEventListener("click", function () { addPaidRow(); });
   document.getElementById("btnAddChange").addEventListener("click", function () { addChangeRow(); });
   document.getElementById("optSwitch").addEventListener("change", recalc);
@@ -551,6 +606,19 @@
   });
 
   renderRates();
+
+  // 版本号
+  document.getElementById("appVer").textContent = "汇率找零 v" + APP_VER + " · " + APP_DATE;
+
+  // 恢复上次的价格行
+  if (savedUI && Array.isArray(savedUI.price) && savedUI.price.length) {
+    savedUI.price.forEach(function (p) {
+      var c = CURS.indexOf(p.currency) >= 0 ? p.currency : BASE;
+      addPriceRow(c, p.amount === undefined || p.amount === null ? null : String(p.amount));
+    });
+  } else {
+    addPriceRow(BASE, null);   // 默认一行应付（美元）
+  }
 
   // 恢复上次的找零币种行
   if (savedUI && Array.isArray(savedUI.change) && savedUI.change.length) {

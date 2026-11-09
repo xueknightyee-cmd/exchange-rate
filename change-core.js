@@ -63,9 +63,19 @@
     return amount / rates[currency];
   }
 
-  // 计算找零（基准币数值）。payments: [{currency, amount}]
+  // 计算找零（基准币数值）。
+  // price 可以是一个数字（配合 priceCurrency），也可以是 [{currency, amount}] 多币种相加。
+  // payments: [{currency, amount}]
   function computeChange(price, priceCurrency, payments, rates) {
-    const priceBase = toBase(price, priceCurrency, rates);
+    let priceBase = 0;
+    if (Array.isArray(price)) {
+      for (const p of price) {
+        const a = Number(p.amount);
+        if (isFinite(a)) priceBase += toBase(a, p.currency, rates);
+      }
+    } else {
+      priceBase = toBase(price, priceCurrency, rates);
+    }
     let paidBase = 0;
     for (const p of payments) {
       paidBase += toBase(p.amount, p.currency, rates);
